@@ -284,7 +284,9 @@
                 }
                 else
                 {
-                    completionBlock(image, self.imageData, nil, YES);
+                    NSData* aData = [self.request.URL.absoluteString dataUsingEncoding: NSUTF8StringEncoding];
+                    
+                    completionBlock(image, aData, nil, YES);
                 }
                 self.completionBlock = nil;
                 [self done];

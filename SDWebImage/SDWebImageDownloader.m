@@ -67,6 +67,7 @@ static NSString *const kCompletedCallbackKey = @"completed";
 {
     if ((self = [super init]))
     {
+        NSLog(@"init SDWebImageDownloader");
         _queueMode = SDWebImageDownloaderFILOQueueMode;
         _downloadQueue = NSOperationQueue.new;
         _downloadQueue.maxConcurrentOperationCount = 2;
@@ -116,9 +117,13 @@ static NSString *const kCompletedCallbackKey = @"completed";
 {
     __block SDWebImageDownloaderOperation *operation;
     __weak SDWebImageDownloader *wself = self;
+    
+    NSLog(@"SDWebImage init 001");
 
     [self addProgressCallback:progressBlock andCompletedBlock:completedBlock forURL:url createCallback:^
     {
+        NSLog(@"break005");
+
         // In order to prevent from potential duplicate caching (NSURLCache + SDImageCache) we disable the cache for image requests
         NSMutableURLRequest *request = [NSMutableURLRequest.alloc initWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:15];
         request.HTTPShouldHandleCookies = NO;
@@ -126,17 +131,22 @@ static NSString *const kCompletedCallbackKey = @"completed";
         request.allHTTPHeaderFields = wself.HTTPHeaders;
         operation = [SDWebImageDownloaderOperation.alloc initWithRequest:request queue:wself.workingQueue options:options progress:^(NSUInteger receivedSize, long long expectedSize)
         {
+            NSLog(@"operation start");
             if (!wself) return;
             SDWebImageDownloader *sself = wself;
             NSArray *callbacksForURL = [sself callbacksForURL:url];
+            NSLog(@"callback loop");
             for (NSDictionary *callbacks in callbacksForURL)
             {
-                SDWebImageDownloaderProgressBlock callback = callbacks[kProgressCallbackKey];
+                NSLog(@"break 010");
+                SDWebImageDownloaderProgressBlock callback = [callbacks objectForKey:kProgressCallbackKey];
                 if (callback) callback(receivedSize, expectedSize);
+                NSLog(@"break 011");
             }
         }
         completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished)
         {
+            NSLog(@"completed");
             if (!wself) return;
             SDWebImageDownloader *sself = wself;
             NSArray *callbacksForURL = [sself callbacksForURL:url];
@@ -146,7 +156,7 @@ static NSString *const kCompletedCallbackKey = @"completed";
             }
             for (NSDictionary *callbacks in callbacksForURL)
             {
-                SDWebImageDownloaderCompletedBlock callback = callbacks[kCompletedCallbackKey];
+                SDWebImageDownloaderCompletedBlock callback = [callbacks objectForKey:kCompletedCallbackKey];
                 if (callback) callback(image, data, error, finished);
             }
         }
@@ -171,6 +181,7 @@ static NSString *const kCompletedCallbackKey = @"completed";
 
 - (void)addProgressCallback:(void (^)(NSUInteger, long long))progressBlock andCompletedBlock:(void (^)(UIImage *, NSData *data, NSError *, BOOL))completedBlock forURL:(NSURL *)url createCallback:(void (^)())createCallback
 {
+    NSLog(@"break 007");
     // The URL will be used as the key to the callbacks dictionary so it cannot be nil. If it is nil immediately call the completed block with no image or data.
     if(url == nil)
     {
@@ -181,27 +192,62 @@ static NSString *const kCompletedCallbackKey = @"completed";
         return;
     }
     
+    NSLog(@"break 008");
+    
     dispatch_barrier_sync(self.barrierQueue, ^
     {
+        NSLog(@"break 009");
+        NSLog( @"%@", self.URLCallbacks.description );
+        NSLog(@"break 010-1");
+        NSLog(@"url : %@", url.description);
+        
         BOOL first = NO;
-        if (!self.URLCallbacks[url])
-        {
+        
+        
+        @try {
+            NSLog(@"break 010-2");
+            if ([self.URLCallbacks objectForKey:url] == FALSE )
+            {
+                NSLog(@"break 011");
+
+                //self.URLCallbacks[url] = [NSMutableArray new];
+                [self.URLCallbacks setObject:[NSMutableArray new] forKey:url];
+                
+                NSLog( @"%@", self.URLCallbacks.description );
+                first = YES;
+            }
+        }
+        @catch (NSException * e) {
+            NSLog(@"Exception: %@", e);
+            NSLog(@"break 011-1");
             self.URLCallbacks[url] = NSMutableArray.new;
             first = YES;
+            NSLog(@"break 011-2");
         }
-
+        
+        NSLog(@"break 001");
         // Handle single download of simultaneous download request for the same URL
-        NSMutableArray *callbacksForURL = self.URLCallbacks[url];
+        //arqNSMutableArray *callbacksForURL = self.URLCallbacks[url];
+        NSMutableArray *callbacksForURL = [self.URLCallbacks objectForKey:url];
+        NSLog(@"break 002");
         NSMutableDictionary *callbacks = NSMutableDictionary.new;
-        if (progressBlock) callbacks[kProgressCallbackKey] = [progressBlock copy];
-        if (completedBlock) callbacks[kCompletedCallbackKey] = [completedBlock copy];
+        NSLog(@"break 003");
+        //if (progressBlock) callbacks[kProgressCallbackKey] = [progressBlock copy];
+        if (progressBlock) [callbacks setObject:[progressBlock copy] forKey:kProgressCallbackKey];
+        NSLog(@"break 004");
+        //if (completedBlock) callbacks[kCompletedCallbackKey] = [completedBlock copy];
+        if (progressBlock) [callbacks setObject:[completedBlock copy] forKey:kCompletedCallbackKey];
         [callbacksForURL addObject:callbacks];
-        self.URLCallbacks[url] = callbacksForURL;
-
+        //self.URLCallbacks[url] = callbacksForURL;
+        [self.URLCallbacks setObject:callbacksForURL forKey:url];
+        
         if (first)
         {
             createCallback();
         }
+        
+        NSLog(@"break 004-1");
+        NSLog( @"%@", self.URLCallbacks.description );
     });
 }
 
@@ -210,7 +256,8 @@ static NSString *const kCompletedCallbackKey = @"completed";
     __block NSArray *callbacksForURL;
     dispatch_sync(self.barrierQueue, ^
     {
-        callbacksForURL = self.URLCallbacks[url];
+        //callbacksForURL = self.URLCallbacks[url];
+        callbacksForURL = [self.URLCallbacks objectForKey:url];
     });
     return callbacksForURL;
 }
